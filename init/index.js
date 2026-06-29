@@ -24,15 +24,41 @@ async function main() {
 
 const initDB = async () => {
   await Listing.deleteMany({});
-  initData.data = initData.data.map((obj) => ({
-    ...obj,
-    owner: "6990ff2617ee924793d6de3f",
-    geometry: {
-      type: "Point",
-      coordinates: [0, 0] // Default coordinates
+  
+  const mbxGeocoding = require('@mapbox/mapbox-sdk/services/geocoding');
+  const mapToken = process.env.MAP_TOKEN;
+  const geocodingClient = mapToken ? mbxGeocoding({ accessToken: mapToken }) : null;
+
+  const updatedData = [];
+  for (let obj of initData.data) {
+    let coordinates = [0, 0];
+    if (geocodingClient) {
+      try {
+        const response = await geocodingClient
+          .forwardGeocode({
+            query: `${obj.location}, ${obj.country}`,
+            limit: 1,
+          })
+          .send();
+        if (response.body.features && response.body.features.length > 0) {
+          coordinates = response.body.features[0].geometry.coordinates;
+        }
+      } catch (err) {
+        console.error(`Failed to geocode ${obj.location}:`, err.message);
+      }
     }
-  }));
-  await Listing.insertMany(initData.data);
+    
+    updatedData.push({
+      ...obj,
+      owner: "6990ff2617ee924793d6de3f",
+      geometry: {
+        type: "Point",
+        coordinates
+      }
+    });
+  }
+
+  await Listing.insertMany(updatedData);
   console.log("data was initialized");
 };
 
